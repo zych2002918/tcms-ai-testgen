@@ -1,22 +1,39 @@
 # tcms-ai-testgen
 
-**让测试平台学会自己写测试 —— LLM 测试用例生成器（TCMS CAN 版）**
+**让测试平台学会自己写测试，并用量化证据证明它写得好。**
 
-> 从 DBC 信号 / 安全需求 / 场景模板生成结构化测试用例，并对生成质量做
-> **确定性量化评估**（解析率 / 执行通过率 / LLM-as-judge 质量分）。
+> 从真实 TCMS（列车控制）CAN 资产（DBC + 故障场景）生成结构化测试用例，
+> 编译为**真实 pytest** 在 tcms-can-test 平台上执行，用四类指标 + **变异杀毒**
+> 量化「AI 写的测试到底好不好」。
 >
 > 设计动机：作者此前手写了 [tcms-can-test](https://github.com/zych2002918/tcms-can-test)
 > 的 777 个 pytest 用例（语句覆盖率 98.00%）。本项目回答一个问题：
-> **如果让 LLM 来写这些用例，我们如何证明它写得"好"？**
-> —— 答案是把「质量评估」本身做成一条可复现的工程流水线。
+> **如果让 AI 来写这些用例，我们如何证明它写得"好"？**
+> —— 答案是把「质量评估」本身做成一条可复现的工程流水线，
+> 并直面行业里普遍没答案的难点：**自然语言用例 ↔ 真实可执行代码的鸿沟**。
 
-## 特性
+## 核心思路（第一性原理）
 
-- 🧪 **质量可度量**：解析率、确定性执行通过率、judge 质量分（0-100）三指标量化生成结果
-- 🔌 **离线可复现**：默认 MockLLM 客户端，不联网即可跑通全链路（CI / 自检 / 演示零依赖）
-- 🏭 **可切换真模型**：DeepSeek/OpenAI 兼容接口，同一质量管线评估真实 LLM 输出
-- 🛡 **失败不崩溃**：LLM 输出无法解析时计为 failure，流水线永远返回可量化报告
-- 📦 **工程同款水准**：29 测试 / 覆盖率 93% / ruff / CI（沿用 tcms-can-test 验收标准）
+```
+真实资产(DBC+场景) ──> 生成器 ──> execution DSL ──> 编译层 ──> 真实 pytest
+   asset_loader        mock/真LLM   白名单原语       executor_real    在上游执行
+                       (oracle派生) (机器可读)       (零自由代码)
+```
+
+**痛点与解法**：LLM 生成的自由文本几乎无法可靠编译成真实测试（P2 实证
+compile≈0）。解法 = **受约束 execution DSL**：生成器输出白名单内的机器可读
+执行意图（故障注入 / 信号注入 / 编码边界断言），期望一律由 **oracle**
+（上游 faultlevel 语义镜像）派生——不手抄、不编造。同一 DSL 让 mock 与真实
+LLM 走同一管线可比，也让「生成源质量」可量化对照。
+
+## 质量证据（不靠嘴说）
+
+| 证据 | 结果 | 复现 |
+|---|---|---|
+| 真实执行通过率 | mock 生成 34 条 → 真实 pytest **34/34 passed**（compile 100%）| `examples/demo_full_loop.py --num 40` |
+| **变异杀毒** | 3 个行为翻转（车门故障被吞 / 编码不拒越界 / 超速处置翻转）**全部被生成用例杀死**（kill_rate 1.0）| 同上 `--mutation` |
+| 生成源可区分 | 规则基线对 2/3 变异无感知（coverage 1/3）；mock 全覆盖 3/3——只报 pass_rate 会误判「两者都会写测试」| `examples/run_p3_comparison.py` |
+| 语义鸿沟实证 | 首版车门断言按数字 2 真实执行失败（上游解码是 VAL_ 文本 'Fault'）——mock 启发式永远抓不到 | docs/experiments/p2-real-executor.md |
 
 ## 快速开始
 
@@ -24,57 +41,58 @@
 python -m venv .venv && .venv/Scripts/activate     # Windows
 pip install -e ".[test]"
 
-# 30 秒自检（离线 mock）
+# 30 秒自检（离线）
 python scripts/selfcheck.py
 
-# 跑默认演示（EBM 紧急制动场景，mock）
-python -m tcms_ai_testgen.cli --num 8
-
-# 加载真实资产摘要（tcms-can-test 的 DBC + 13 个场景；可用 TCMS_UPSTREAM_ROOT 指路径）
+# 真实资产摘要（tcms-can-test 的 DBC 8 报文/36 信号 + 13 场景；TCMS_UPSTREAM_ROOT 可指路径）
 python examples/demo_assets.py
 
-# 真实 LLM（需 pip install .[llm]，配置 DEEPSEEK_API_KEY）
-python -m tcms_ai_testgen.cli --llm --target "ATP 超速防护"
+# 全链路一条命令：需求 → 生成 → 真实 pytest → 量化报告（附变异杀毒）
+python examples/demo_full_loop.py --num 40 --mutation --out docs/reports/demo.json
+
+# P3 生成源对比实验（规则基线 vs mock × 3 变异杀毒）
+python examples/run_p3_comparison.py
+
+# 真实 LLM（需 pip install .[llm] 与 DEEPSEEK_API_KEY；同一 DSL 同一管线）
+python -m tcms_ai_testgen.cli --llm --target "TCMS 超速防护"
 ```
 
-## 流水线设计
+## 模块地图
 
-```
-需求/信号/场景模板 ──> prompt 构造 ──> LLM（mock/真实）──> 原始文本
-                                                        │
-                 ┌──────────────────────────────────────┤
-                 ▼                                      ▼
-        确定性执行器（编译率/通过率）         结构化解析（解析率，失败计数）
-                 │                                      │
-                 └──────────────┬───────────────────────┘
-                                ▼
-                LLM-as-judge 质量分（0-100）──> GenReport（JSON 可序列化）
-```
+- `models.py` — 数据契约：`GenRequest` / `GeneratedCase`（含 execution 意图）
+- `execution.py` — **execution DSL**：白名单原语（setup/expect）+ pydantic 严格校验
+- `oracle.py` — 10 故障键语义镜像（level → action），生成期期望派生源
+- `asset_loader.py` / `asset_models.py` — 真实资产（DBC 8 报文/36 信号 + 13 场景 YAML）
+- `llm.py` — 客户端抽象：`MockLLMClient`（DSL 一致性套件）/ `OpenAICompatClient`（真实）
+- `executor_real.py` — **真实执行器**：execution DSL → 真实 pytest（上游环境跑）
+- `mutation.py` — **变异杀毒**：行为翻转 × 生成用例，精准 kill_rate
+- `baseline_rule.py` — 规则基线生成源（对照臂，证明质量可区分）
+- `pipeline.py` / `judge.py` / `executor.py` / `prompt.py` — 一期骨架（mock 质量信号）
+- `cli.py` — CLI 入口
 
-- `models.py`  — 数据契约（pydantic）：`GenRequest` / `GeneratedCase` / `GenReport`
-- `prompt.py`  — prompt 工程：固定输出契约 + fence + 需求可追溯要求
-- `llm.py`     — 客户端抽象：`MockLLMClient`（确定性）/ `OpenAICompatClient`（真实）
-- `executor.py`— 确定性执行器：把自然语言用例映射到可执行检查（compile/pass 口径）
-- `judge.py`   — 质量评分：结构完整度 + 需求可追溯 + 场景设计（边界/异常）
-- `pipeline.py`— 编排：生成 → 解析 → 执行 → 打分，永不抛业务异常
-- `asset_models.py` / `asset_loader.py` — 真实资产接入（P1）：解析 tcms-can-test 的
-  DBC（8 报文 / 36 信号）与场景 YAML（13 个）为结构化输入，坏文件容错 + 诚实 parse_rate
+## 文档地图
 
-## 质量口径（面试可讲）
+- `docs/PLAN.md` — 成品蓝图与推进计划
+- `docs/metrics.md` — 指标口径权威定义（parse/compile/exec/kill_rate 分母诚实）
+- `docs/decisions.md` — 关键决策 + 对抗审查采纳记录
+- `docs/asset-loader.md` — 资产解析设计
+- `docs/experiments/p2-real-executor.md` / `p3-source-comparison.md` — 实验报告
+- `docs/reports/` — 可复现运行报告（JSON）
 
-| 指标 | 含义 | 现状（mock 演示） |
-|---|---|---|
-| `parse_rate` | 结构化解析成功率 | ~85%（mock 故意注入残缺样本验证统计） |
-| `exec_pass_rate` | 确定性执行器通过率 | 由检查器判定 |
-| `quality_score` | judge 质量分 0-100 | ~95 |
+## 工程门禁（与上游同款水准）
 
-## Roadmap（二期）
+pytest 全绿（106+）· 覆盖率 ≥90% · ruff clean · selfcheck PASS · CI（3.10-3.12）
+LLM 非确定性：CI 只跑 mock 离线；真实执行实验固定 seed/温度。
 
-- [x] 接入 `tcms-can-test`：解析其 DBC/场景库为生成输入（P1：asset_loader + 单测 91%）
-- [x] P2 真实执行：生成用例 → 真 pytest → tcms-can-test 跑通（executor_real：边界/注入 4 类语义原语，curated-5 全过 5/5，实验见 docs/experiments/p2-real-executor.md）
-- [ ] P3 真实 LLM 对比实验：DeepSeek 等模型 × 多组需求，输出对比表
-- [ ] P4 真 LLM-as-judge：把 rubric 注入 prompt 替代规则评分
-- [ ] Agent 模式：多轮 self-critique 迭代修正生成用例
+## Roadmap
+
+- [x] P1 真实资产解析（DBC + 13 场景，坏文件诚实统计）
+- [x] P2 真实执行器（execution DSL v1：关键词 → 真实 pytest）
+- [x] P3a execution DSL（白名单原语 + oracle 派生期望，mock 可编译率 100%）
+- [x] P3b 变异杀毒实验 + 生成源对比（质量证据）
+- [ ] 真实 LLM 对比臂（OpenAICompatClient 已就绪，接 key 即跑，不改变实验结构）
+- [ ] 组合增量量化（生成集 − 777 手写已覆盖，对上游 rtm.csv 做集合差）
+- [ ] 真 LLM-as-judge 与规则 rubric 交叉验证
 
 ## License
 
