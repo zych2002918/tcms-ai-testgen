@@ -71,7 +71,7 @@ python -m tcms_ai_testgen.cli --llm --target "ATP 超速防护"
 ## Roadmap（二期）
 
 - [x] 接入 `tcms-can-test`：解析其 DBC/场景库为生成输入（P1：asset_loader + 单测 91%）
-- [ ] P2 真实执行：生成用例 → 真 pytest → tcms-can-test 跑通 ≥1 条
+- [x] P2 真实执行：生成用例 → 真 pytest → tcms-can-test 跑通（executor_real：边界/注入 4 类语义原语，curated-5 全过 5/5，实验见 docs/experiments/p2-real-executor.md）
 - [ ] P3 真实 LLM 对比实验：DeepSeek 等模型 × 多组需求，输出对比表
 - [ ] P4 真 LLM-as-judge：把 rubric 注入 prompt 替代规则评分
 - [ ] Agent 模式：多轮 self-critique 迭代修正生成用例
