@@ -45,11 +45,11 @@ tcms-ai-testgen --assets <upstream> --source <generator> --real  →  docs/repor
 | 阶段 | 内容 | 验收 |
 |---|---|---|
 | R1 审查 | 子 agent 对抗审查成品定义/DSL 方向 | 有书面结论，采纳/驳回记录 |
-| R2 DSL | models 加 `execution` 字段；prompt 白名单原语+期望参考表；mock 生成 DSL | 单测绿，mock 全链路 compile_rate>0 |
-| R3 闭环 | demo_full_loop 一条命令出报告 | 真实执行数字实测 |
-| R4 实验 | P3 生成源对照（规则/mock/手工子集）+ 数据表 + 结论 | docs/experiments/ 落盘 |
-| R5 文档 | interview_guide + README + metrics 更新 | 3 分钟话术可讲 |
-| R6 终验 | 子 agent red-team 审查 + 章程逐条核验 + 门禁 + commit | 全部通过 |
+| R2 DSL | models 加 `execution` 字段；prompt 白名单原语+期望参考表；mock 生成 DSL | ✅ 单测绿，mock 全链路 compile_rate 100%（commit 9d394a3）|
+| R3 闭环 | demo_full_loop 一条命令出报告 | ✅ mock-34 真实执行 34/34 passed（commit 7b7ae02）|
+| R4 实验 | P3 生成源对照（规则/mock）+ 变异杀毒 + 数据表 + 结论 | ✅ mutant_coverage 1/3 vs 3/3（commit 99260ff）|
+| R5 文档 | interview_guide + README + metrics 更新 | ✅（commit 7b7ae02）|
+| R6 终验 | 子 agent red-team 审查 + 章程逐条核验 + 门禁 + commit | 🔄 进行中 |
 
 **约束**：离线优先（无 API key / 本地模型 → 用 mock+规则+手工对照，诚实标注）；
 成本受控（子 agent 只用于方向审查与终验，实现主链本人做）；每阶段先自测后回报。
