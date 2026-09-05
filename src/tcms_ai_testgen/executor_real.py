@@ -86,7 +86,13 @@ def _compile_encode_bound(ex: object) -> Optional[str]:
         if step.op == "expect_encode_error":
             lines.append(f'    with pytest.raises(EncodeError):\n        _encode(db, "{msg}", {sig}={val})')
         elif step.op == "expect_encode_ok":
-            lines.append(f'    data = _encode(db, "{msg}", {sig}={val})\n    assert len(data) == 8')
+            # 往返校验：编码成功 + 解码回原值（防「返回错误数据但长度不变」变异漏网）
+            lines.append(
+                f'    data = _encode(db, "{msg}", {sig}={val})\n'
+                f"    assert len(data) == 8\n"
+                f'    decoded = db.decode_message(db.get_message_by_name("{msg}").frame_id, data)\n'
+                f'    assert decoded["{sig}"] == {val if isinstance(val, int) else repr(float(val))}'
+            )
         else:
             return None
     return "\n".join(lines)

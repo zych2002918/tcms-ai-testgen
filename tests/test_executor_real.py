@@ -55,6 +55,9 @@ class TestCompileEncodeBound:
         assert src is not None
         assert "assert len(data) == 8" in src
         assert "SpeedKmh=200.0" in src
+        # 往返断言（v2：防「返回错误数据但长度不变」变异漏网）
+        assert "decode_message" in src
+        assert 'decoded["SpeedKmh"]' in src
 
     def test_unmatched_encode_bound_with_setup_returns_none(self) -> None:
         c = _case(

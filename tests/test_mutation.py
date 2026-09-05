@@ -10,6 +10,8 @@ from tcms_ai_testgen.mutation import (
     MUTATION_TARGETS,
     MUTATIONS,
     MutationResult,
+    _compile_with_patch,
+    _failed_case_names,
     list_mutations,
     mutation_patch,
     mutation_relevant,
@@ -79,6 +81,21 @@ class TestMutationResult:
         r = MutationResult(mutation="m", total=4, relevant=1, killed=1, survived=0)
         d = r.as_dict()
         assert d["kill_rate"] == 1.0
+
+
+class TestHelpers:
+    def test_failed_case_names_parsing(self) -> None:
+        out = "FAILED tests/test_ai_generated_mutant.py::test_door_fault - AssertionError: x\n"
+        assert _failed_case_names(out) == {"test_door_fault"}
+        assert _failed_case_names("3 passed in 1s") == set()
+
+    def test_compile_with_patch_injects_fixture(self) -> None:
+        c = _case("test_door", _DOOR)
+        code = _compile_with_patch([c], "import tcms.simulator as _sim\n_orig = 1\n")
+        assert "@pytest.fixture(autouse=True)" in code
+        assert "_mutate" in code
+        assert "test_door" in code
+        assert "import tcms.simulator" in code
 
 
 class TestRealMutation:

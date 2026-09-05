@@ -178,19 +178,6 @@ class MutationResult:
         }
 
 
-def _counts_from_stdout(stdout: str) -> tuple[int, int]:
-    passed = 0
-    failed = 0
-    for ln in stdout.splitlines():
-        m = re.search(r"(\d+) passed", ln)
-        if m:
-            passed = int(m.group(1))
-        m = re.search(r"(\d+) failed", ln)
-        if m:
-            failed = int(m.group(1))
-    return passed, failed
-
-
 def _compile_with_patch(cases: list[GeneratedCase], patch_code: str) -> str:
     """把用例编译为 pytest 文件，并在头部注入变异 patch fixture。"""
     bodies: list[str] = []
@@ -249,16 +236,22 @@ def run_mutation(
     proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, encoding="utf-8",
                           errors="replace", timeout=180)
     stdout = proc.stdout
-    # 变异版统计：passed（survived）/ failed（killed）
-    mut_passed, mut_failed = _counts_from_stdout(stdout)
-    baseline_failed = baseline.failed if baseline else 0
+    # 变异版统计：逐用例判定 FAIL/PASS。不能靠汇总数——不相关用例可能因
+    # 变异副作用连带失败（不算杀毒）；必须只统计相关用例的失败。
+    failed_names = _failed_case_names(stdout)
+    baseline_failed_names = _failed_case_names(baseline.stdout) if baseline is not None else set()
+
     total = baseline.passed if baseline else 0
-    # 变异版上失败数 - 原始版就失败的 = 真正被变异杀死的用例
-    killed_all = max(0, mut_failed - baseline_failed)
-    # 但精准 kill_rate 只算相关用例：相关用例数 <= total
-    # 防御：变异版收集为 0 时无法统计（如 patch 语法错），如实返回 0
-    if mut_passed + mut_failed == 0:
-        killed_all = 0
+    relevant_compiled = [c.name for c in cases if c.name in relevant_names]
+    killed = 0
+    for name in relevant_compiled:
+        if name in baseline_failed_names:
+            continue  # 原始版就失败：不算杀毒（它没证明任何东西）
+        if name in failed_names:
+            killed += 1
+    # 防御：变异版未收集到任何用例（patch 语法错等）——killed 归零如实反映
+    if "no tests ran" in stdout:
+        killed = 0
 
     if not keep_artifacts:
         try:
@@ -269,11 +262,19 @@ def run_mutation(
     return MutationResult(
         mutation=mutation,
         total=total,
-        relevant=len(relevant_names),
-        killed=killed_all,
-        survived=max(0, len(relevant_names) - killed_all),
+        relevant=len(relevant_compiled),
+        killed=killed,
+        survived=max(0, len(relevant_compiled) - killed),
         stdout=stdout,
     )
+
+
+def _failed_case_names(stdout: str) -> set[str]:
+    """从 pytest 输出解析失败用例名（`FAILED path::test_name` 行）。"""
+    names: set[str] = set()
+    for m in re.finditer(r"FAILED\s+\S*?::(\w+)\b", stdout):
+        names.add(m.group(1))
+    return names
 
 
 __all__ = [
