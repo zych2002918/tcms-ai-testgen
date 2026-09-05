@@ -48,8 +48,17 @@ tcms-ai-testgen --assets <upstream> --source <generator> --real  →  docs/repor
 | R2 DSL | models 加 `execution` 字段；prompt 白名单原语+期望参考表；mock 生成 DSL | ✅ 单测绿，mock 全链路 compile_rate 100%（commit 9d394a3）|
 | R3 闭环 | demo_full_loop 一条命令出报告 | ✅ mock-34 真实执行 34/34 passed（commit 7b7ae02）|
 | R4 实验 | P3 生成源对照（规则/mock）+ 变异杀毒 + 数据表 + 结论 | ✅ mutant_coverage 1/3 vs 3/3（commit 99260ff）|
-| R5 文档 | interview_guide + README + metrics 更新 | ✅（commit 7b7ae02）|
-| R6 终验 | 子 agent red-team 审查 + 章程逐条核验 + 门禁 + commit | 🔄 进行中 |
+| R5 文档 | interview_guide + README + metrics 更新 | ✅（commit 7b7ae02，red-team 后修订 b0743cc）|
+| R6 终验 | 子 agent red-team 审查 + 章程逐条核验 + 门禁 + commit | ✅ red-team 3 高全修（prompt 契约/对拍/诚实文档）；118 passed / 91.99% / ruff / selfcheck（commit b0743cc）|
+
+## 4. 终验结论（2026-09-05）
+
+- 章程成功标准逐条达成：全链路实测可复现 ✓；P2/P3 实验报告 ✓；工程门禁全绿 ✓；
+  interview_guide 3 分钟话术 ✓。
+- red-team 终审 3 高 + 2 中 + 777 叙事硬伤全部处置（docs/decisions.md D3），
+  成品宣称收敛为可辩护的一句话（见 D3「可宣称的最大结论」）。
+- 遗留 backlog（有意不本期做）：真 LLM 对比臂（prompt 契约已就绪）、
+  fault×mode×时序组合空间、真 LLM-as-judge、变异面扩展（心跳/叠加/mode）。
 
 **约束**：离线优先（无 API key / 本地模型 → 用 mock+规则+手工对照，诚实标注）；
 成本受控（子 agent 只用于方向审查与终验，实现主链本人做）；每阶段先自测后回报。
