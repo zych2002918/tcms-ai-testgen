@@ -17,12 +17,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from collections import Counter
 from pathlib import Path
 
 from tcms_ai_testgen.asset_loader import default_upstream_root
-from tcms_ai_testgen.oracle import FAULT_NAMES, fault_keys, lookup
+from tcms_ai_testgen.oracle import fault_keys, lookup
 
 #: 主题 → 关键词（函数名小写匹配）
 TOPICS: dict[str, list[str]] = {
