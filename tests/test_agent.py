@@ -10,6 +10,7 @@ import pytest
 
 from tcms_ai_testgen.agent import (
     CaseOutcome,
+    LLMReflector,
     MockReflector,
     ReflectReport,
     _failed_names,
@@ -137,6 +138,90 @@ class TestMockReflector:
         info = classify_failure(c, "AssertionError: assert 'Fault' == 2")
         fixer = MockReflector()
         assert fixer.fix(c, info) is None  # mock 只修 class1
+
+
+class _FakeClient:
+    """离线 fake：complete() 返回预设文本（模拟真 LLM 修正响应）。"""
+
+    def __init__(self, response: str):
+        self._resp = response
+        self.last_prompt: str = ""
+
+    def complete(self, prompt: str, temperature=None) -> str:
+        self.last_prompt = prompt
+        return self._resp
+
+
+class TestLLMReflectorOffline:
+    def _case(self, value: int = -1) -> GeneratedCase:
+        return _case("test_alarm_level_valid", {"kind": "encode_bound", "setup": [], "expect": [
+            {"op": "expect_encode_ok", "args": {"message": "AlarmEvent", "signal": "AlarmLevel", "value": value}}]})
+
+    def test_fix_bare_execution_json(self) -> None:
+        """模型返回裸 execution JSON（修正 value=-1→0）→ 应接受并 diff。"""
+        fixed_json = '''{"kind":"encode_bound","setup":[],"expect":[{"op":"expect_encode_ok",
+            "args":{"message":"AlarmEvent","signal":"AlarmLevel","value":0}}]}'''
+        c = self._case(-1)
+        ref = LLMReflector(_FakeClient(f"```json\n{fixed_json}\n```"))
+        info = classify_failure(
+            c,
+            'EncodeError: Expected signal "AlarmLevel" value greater than or equal to 0 '
+            'in message "AlarmEvent", but got -1.',
+        )
+        assert info.kind == "class1"  # 分类须命中
+        out = ref.fix(c, info, "EncodeError AlarmLevel -1")
+        assert out is not None
+        assert out.execution.expect[0].args["value"] == 0
+        ev = ref._evidence(c, info)
+        assert "AlarmLevel" in ev  # oracle 域值证据注入
+        assert "0" in ev and "3" in ev  # min/max
+
+    def test_fix_cases_wrapped_same_name(self) -> None:
+        """模型返回 cases 外壳 + 同名用例 → 应接受。"""
+        fixed_json = '''{"cases":[{"name":"test_alarm_level_valid","purpose":"p","expected":"e",
+            "execution":{"kind":"encode_bound","setup":[],"expect":[{"op":"expect_encode_ok",
+            "args":{"message":"AlarmEvent","signal":"AlarmLevel","value":0}}]}}]}'''
+        c = self._case(-1)
+        ref = LLMReflector(_FakeClient(fixed_json))
+        out = ref.fix(c, classify_failure(c, "EncodeError"), "EncodeError")
+        assert out is not None and out.execution.expect[0].args["value"] == 0
+
+    def test_fix_renamed_case_rejected(self) -> None:
+        """模型改用例名 → 拒绝（None）。"""
+        fixed_json = '''{"cases":[{"name":"other_name","purpose":"p","expected":"e",
+            "execution":{"kind":"encode_bound","setup":[],"expect":[{"op":"expect_encode_ok",
+            "args":{"message":"AlarmEvent","signal":"AlarmLevel","value":0}}]}}]}'''
+        c = self._case(-1)
+        ref = LLMReflector(_FakeClient(fixed_json))
+        assert ref.fix(c, classify_failure(c, "EncodeError"), "x") is None
+
+    def test_fix_unchanged_rejected(self) -> None:
+        """模型原样返回（无实质变化）→ 拒绝（防换说法）。"""
+        unchanged = '''{"kind":"encode_bound","setup":[],"expect":[{"op":"expect_encode_ok",
+            "args":{"message":"AlarmEvent","signal":"AlarmLevel","value":-1}}]}'''
+        c = self._case(-1)
+        ref = LLMReflector(_FakeClient(unchanged))
+        assert ref.fix(c, classify_failure(c, "EncodeError"), "x") is None
+
+    def test_fix_empty_cases(self) -> None:
+        """模型输出空（目标不支持）→ None。"""
+        c = self._case(-1)
+        ref = LLMReflector(_FakeClient('{"cases": []}'))
+        assert ref.fix(c, classify_failure(c, "EncodeError"), "x") is None
+
+    def test_fix_garbage(self) -> None:
+        c = self._case(-1)
+        ref = LLMReflector(_FakeClient("完全不是 JSON"))
+        assert ref.fix(c, classify_failure(c, "EncodeError"), "x") is None
+
+    def test_fix_prompt_includes_evidence_and_error(self) -> None:
+        c = self._case(-1)
+        ref = LLMReflector(_FakeClient("{}"))
+        info = classify_failure(c, 'EncodeError: Expected signal "AlarmLevel" ... got -1')
+        p = ref.fix_prompt(c, info, "EncodeError AlarmLevel -1 traceback....")
+        assert "AlarmLevel" in p
+        assert "0" in p  # oracle 域值 min/max
+        assert "修正" in p
 
 
 class TestRealReflectLoop:

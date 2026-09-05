@@ -206,15 +206,67 @@ class MockReflector:
 
 
 class LLMReflector:
-    """真 LLM 修正器（demo 用，需 API key）。构造修正 prompt 并调用模型。"""
+    """真 LLM 修正器（demo 用，需 API key）。构造修正 prompt 并调用模型。
+
+    fix() 要求客户端提供 `complete(prompt) -> str` 能力——OpenAICompatClient
+    的 generate_cases 语义不符，故这里直接依赖其底层 chat 完成修正（修正
+    prompt 不是"生成一批用例"，而是"改一条失败用例"）。
+    """
+
+    #: 信号事实表（派生自 executor_real.ENUM_SIGNAL_TEXTS 镜像 + 物理范围）：
+    #: message.signal -> 枚举文本/物理范围。修正时注入失败信号的真实域值，
+    #: 防 LLM 再次编造。枚举部分与 executor_real 同源（不双写）。
+    SIGNAL_FACTS: dict[tuple[str, str], dict] = {}
+
+    @classmethod
+    def _signal_facts(cls) -> dict[tuple[str, str], dict]:
+        """构建信号事实（枚举来自 executor_real 镜像表，范围内置）。"""
+        if cls.SIGNAL_FACTS:
+            return cls.SIGNAL_FACTS
+        from tcms_ai_testgen.executor_real import ENUM_SIGNAL_TEXTS
+
+        ranges: dict[tuple[str, str], tuple[int, int]] = {
+            ("AlarmEvent", "AlarmCode"): (0, 255),
+            ("AlarmEvent", "AlarmLevel"): (0, 3),
+            ("VehicleSpeed", "SpeedKmh"): (0, 200),
+            ("TractionBrakeHandle", "HandlePosition"): (0, 16),
+            ("EnergyStatus", "SocPercent"): (0, 100),
+            ("DoorControl", "AllDoorsClosed"): (0, 1),
+        }
+        for (msg, sig), texts in ENUM_SIGNAL_TEXTS.items():
+            lo = min(texts)
+            hi = max(texts)
+            ranges[(msg, sig)] = (lo, hi)
+        for (msg, sig), (lo, hi) in ranges.items():
+            entry: dict = {"min": lo, "max": hi, "note": "raw 值" if (msg, sig) in ENUM_SIGNAL_TEXTS else "物理值"}
+            if (msg, sig) in ENUM_SIGNAL_TEXTS:
+                entry["enum"] = list(ENUM_SIGNAL_TEXTS[(msg, sig)].values())
+                entry["note"] = "decode 后是文本枚举，encode 收 raw"
+            cls.SIGNAL_FACTS[(msg, sig)] = entry
+        return cls.SIGNAL_FACTS
 
     def __init__(self, client, rag_index=None, max_evidence_chars: int = 1200):
         self.client = client
         self.rag_index = rag_index
         self.max_evidence_chars = max_evidence_chars
 
-    def _evidence(self, case: GeneratedCase) -> str:
+    def _evidence(self, case: GeneratedCase, info: FailureInfo) -> str:
         parts: list[str] = []
+        # 1) 失败信号的真实域值（oracle 事实）—— class1 的修复依据
+        if info.signal and info.message:
+            fact = self._signal_facts().get((info.message, info.signal))
+            if fact:
+                parts.append(
+                    f"该信号真实域值（必须遵守）：{info.message}.{info.signal} "
+                    f"min={fact['min']} max={fact['max']} 枚举={fact.get('enum', '无')} "
+                    f"({fact.get('note', '')})"
+                )
+            else:
+                parts.append(
+                    f"注意：{info.message}.{info.signal} 不在已知信号表，若该信号不存在"
+                    "请输出空 JSON（目标不支持）"
+                )
+        # 2) RAG 上游金标（class2 断言错配的修复依据）
         if self.rag_index is not None:
             hits = self.rag_index.retrieve(case.purpose + " " + case.expected, top_k=2)
             if hits:
@@ -229,7 +281,7 @@ class LLMReflector:
         err_lines = [ln for ln in stdout.splitlines()
                      if "Error" in ln or "assert" in ln or "FAILED" in ln][:8]
         err_text = "\n".join(err_lines) or stdout[:500]
-        return f"""该用例真实执行失败，请修正它的 execution 并输出**同名同结构**的完整 JSON（只输出 json fence）：
+        return f"""该用例真实执行失败，请修正它的 execution 并输出**修正后的 execution JSON**（裸 JSON 或 {{"cases": [...]}} 外壳均可，只输出 json fence）：
 
 失败用例 execution：
 {ex}
@@ -244,8 +296,50 @@ class LLMReflector:
 2. 不得删除断言、不得改用例名、不得新增其它用例；
 3. execution 必须与原来实质不同（改了才算修）；
 4. 若无法修正（目标本身不支持），输出空 JSON {{"cases": []}}。
-{self._evidence(case)}
+
+证据（以此为准，禁止编造）：
+{self._evidence(case, info)}
 """
+
+    def fix(self, case: GeneratedCase, info: FailureInfo, stdout: str) -> Optional[GeneratedCase]:
+        """调用真 LLM 修正；失败/无实质变化返回 None（计 unhealed）。
+
+        兼容两种响应形态：{"cases":[...]} 外壳 或 裸 execution JSON。
+        """
+        from tcms_ai_testgen.llm import extract_json
+        from tcms_ai_testgen.models import GeneratedCase as GC
+
+        prompt = self.fix_prompt(case, info, stdout)
+        raw = self._chat(prompt)
+        payload = extract_json(raw)
+        if payload is None:
+            return None
+        # 形态 1：cases 外壳 → 找同名且 diff
+        if isinstance(payload, dict) and isinstance(payload.get("cases"), list):
+            for item in payload["cases"]:
+                try:
+                    c = GC.model_validate(item)
+                except Exception:
+                    continue
+                if c.name == case.name and execution_diff(case.execution, c.execution):
+                    return c
+            return None
+        # 形态 2：裸 execution → 直接套回原 case
+        try:
+            new_ex = ExecutionIntent.model_validate(payload)
+        except Exception:
+            return None
+        if execution_diff(case.execution, new_ex):
+            c2 = case.model_copy(deep=True)
+            c2.execution = new_ex
+            return c2
+        return None
+
+    def _chat(self, prompt: str) -> str:
+        """底层 chat 调用（OpenAICompatClient.complete）。"""
+        if not hasattr(self.client, "complete"):
+            raise RuntimeError("LLMReflector 需要支持 complete(prompt) 的客户端")
+        return self.client.complete(prompt, temperature=0.1)
 
 
 # ---------------------------------------------------------------------------

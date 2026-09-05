@@ -241,6 +241,16 @@ class OpenAICompatClient(LLMClient):
         )
         return resp.choices[0].message.content or ""
 
+    def complete(self, prompt: str, temperature: float | None = None) -> str:  # pragma: no cover
+        """自由补全（反思修正/LLM-judge 用）：单 user 消息，返回文本。"""
+        resp = self._client.chat.completions.create(
+            model=self._model,
+            temperature=self._temperature if temperature is None else temperature,
+            timeout=self._timeout,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.choices[0].message.content or ""
+
 
 def build_client(
     *,
