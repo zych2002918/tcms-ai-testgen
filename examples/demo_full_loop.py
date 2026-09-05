@@ -1,7 +1,7 @@
 """演示/自检：一条命令跑通「需求 → 生成 → 编译 → 真实执行 → 量化报告」。
 
 用法（需上游 tcms-can-test 可用；TCMS_UPSTREAM_ROOT 可覆盖路径）：
-    python examples/demo_full_loop.py --source mock_llm --num 12 --out docs/reports/demo.json
+    python examples/demo_full_loop.py --source mock_llm --num 40 --out docs/reports/demo.json
     python examples/demo_full_loop.py --source rule_baseline
     python examples/demo_full_loop.py --mutation     # 附变异杀毒
 """
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
