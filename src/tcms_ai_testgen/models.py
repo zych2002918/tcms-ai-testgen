@@ -10,6 +10,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from tcms_ai_testgen.execution import ExecutionIntent
+
 
 class GenRequest(BaseModel):
     """一次用例生成请求的输入。"""
@@ -43,10 +45,20 @@ class GeneratedCase(BaseModel):
     covers: list[str] = Field(default_factory=list)
     #: 用例级别
     tier: Literal["smoke", "safety", "regression"] = "smoke"
+    #: 机器可读执行意图（可选；缺失则仅自然语言，真实执行按 uncompiled 计）
+    execution: Optional[ExecutionIntent] = None
 
     def is_valid(self) -> bool:
-        """结构完整性的最小判定：名字/目的/预期不能为空。"""
-        return bool(self.name.strip()) and bool(self.purpose.strip()) and bool(self.expected.strip())
+        """结构完整性的最小判定：名字/目的/预期不能为空。
+
+        带 execution 的用例额外要求机器可执行（否则视为生成质量缺陷，
+        下游真实执行会把它计为 uncompiled/失败，口径诚实）。
+        """
+        if not (self.name.strip() and self.purpose.strip() and self.expected.strip()):
+            return False
+        if self.execution is not None and not self.execution.is_executable():
+            return False
+        return True
 
 
 class GenReport(BaseModel):

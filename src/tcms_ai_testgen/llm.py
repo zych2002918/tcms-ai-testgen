@@ -86,35 +86,119 @@ class LLMClient(ABC):
 class MockLLMClient(LLMClient):
     """确定性 mock：根据需求/hints 拼出固定风格用例，离线可复现。
 
-    命名刻意模拟「真实 LLM 会起的语义化用例名」（test_<模块>_<场景>），
-    让演示数据的 exec_pass_rate 不为 0，统计口径才真实可讲。
+    v2 设计（docs/decisions.md D1）：
+        - mock 的隐藏职能 = **DSL 一致性套件**——生成结果必须可编译、可真实
+          执行，从而证明 DSL 对上游可执行语义面完备；此后真 LLM 臂的任何
+          失败才能归因于模型而非 DSL。
+        - 期望一律由 oracle 派生（见 oracle.py），不手抄、不编造——否则
+          PASS 退化为回声 spec 的 tautology。
+        - 语义族覆盖：encode_bound（信号边界）+ simulate_inject（信号注入）
+          + fault_scenario（10 故障键 × oracle 期望），三族全在真实执行面内。
     """
 
-    #: 语义化场景词库（按 i 轮转），对应边界/异常/时序类测试点
-    _SCENE_WORDS = ("boundary_max", "boundary_min", "timeout", "disconnect", "recovery", "flap")
-
+    #: 语义族轮转（按 i 轮转；其中 fault_scenario 族再按 oracle 键轮转）
     def generate_cases(self, req: GenRequest) -> str:
+        from tcms_ai_testgen.oracle import fault_keys
+
+        keys = fault_keys()
         cases: list[dict[str, Any]] = []
         n = req.num_cases
-        # 每 6 条故意制造 1 条结构残缺样本，用于演示 parse_rate < 1 的统计
         for i in range(1, n + 1):
             if i % 6 == 0:
                 cases.append({"name": f"broken_{i}", "purpose": ""})  # 缺 expected -> 解析失败
                 continue
-            req_src = req.requirements[(i - 1) % len(req.requirements)] if req.requirements else "通用功能"
-            scene = self._SCENE_WORDS[(i - 1) % len(self._SCENE_WORDS)]
-            cases.append(
-                {
-                    "name": f"test_{scene}",
-                    "purpose": f"验证 {req.target} 在「{req_src}」下的{scene}行为",
-                    "preconditions": "系统处于初始状态",
-                    "steps": [f"构造输入（第 {i} 组边界）", "执行目标动作", "观察输出"],
-                    "expected": "触发紧急制动并报警" if "断线" in req_src else "输出符合预期，无异常告警",
-                    "covers": [str(i % max(1, len(req.requirements)))],
-                    "tier": req.tier,
-                }
-            )
+            family = (i - 1) % 4
+            if family == 0:  # encode_bound 拒绝
+                cases.append(self._encode_bound_case(i, reject=True))
+            elif family == 1:  # encode_bound 接受
+                cases.append(self._encode_bound_case(i, reject=False))
+            elif family == 2:  # simulate_inject（车门故障信号断言）
+                cases.append(self._simulate_door_case(i))
+            else:  # fault_scenario（按 oracle 键轮转，期望派生）
+                key = keys[(i - 1) % len(keys)]
+                cases.append(self._fault_case(i, key))
         return json.dumps({"cases": cases}, ensure_ascii=False)
+
+    @staticmethod
+    def _encode_bound_case(i: int, reject: bool) -> dict[str, Any]:
+        """信号边界族：车速越界拒绝 / 上限接受（P2 已验证的真实语义）。"""
+        if reject:
+            return {
+                "name": f"test_speed_boundary_reject_{i}",
+                "purpose": "车速越界应被编码拒绝",
+                "preconditions": "DBC 就绪",
+                "steps": ["构造车速 200.1", "调用 db.encode_message", "观察是否拒绝"],
+                "expected": "编码抛出 EncodeError（200.1 超物理上限 200）",
+                "covers": ["1"],
+                "tier": "smoke",
+                "execution": {
+                    "kind": "encode_bound",
+                    "setup": [],
+                    "expect": [{"op": "expect_encode_error", "args": {"message": "VehicleSpeed", "signal": "SpeedKmh", "value": 200.1}}],
+                },
+            }
+        return {
+            "name": f"test_speed_boundary_ok_{i}",
+            "purpose": "车速物理上限可正常编码",
+            "preconditions": "DBC 就绪",
+            "steps": ["构造车速 200.0", "调用 db.encode_message", "观察是否成功"],
+            "expected": "车速 200.0 编码成功且报文长度 8",
+            "covers": ["1"],
+            "tier": "smoke",
+            "execution": {
+                "kind": "encode_bound",
+                "setup": [],
+                "expect": [{"op": "expect_encode_ok", "args": {"message": "VehicleSpeed", "signal": "SpeedKmh", "value": 200.0}}],
+            },
+        }
+
+    @staticmethod
+    def _simulate_door_case(i: int) -> dict[str, Any]:
+        """信号注入族：车门故障 → 解码断言（VAL_ 枚举文本）。"""
+        return {
+            "name": f"test_door_fault_signal_{i}",
+            "purpose": "车门故障应解码为 Fault 且禁止发车",
+            "preconditions": "simulator 运行中",
+            "steps": ["注入 Door2 Fault", "采集 DoorControl", "解码断言"],
+            "expected": "Door2State 解码为 'Fault'，AllDoorsClosed=0",
+            "covers": ["1"],
+            "tier": "safety",
+            "execution": {
+                "kind": "simulate_inject",
+                "setup": [{"op": "set_door_state", "args": {"index": 1, "state": 2}}],
+                "expect": [
+                    {"op": "expect_signal", "args": {"message": "DoorControl", "signal": "Door2State", "equals": "Fault"}},
+                    {"op": "expect_signal", "args": {"message": "DoorControl", "signal": "AllDoorsClosed", "equals": 0}},
+                ],
+            },
+        }
+
+    @staticmethod
+    def _fault_case(i: int, key: str) -> dict[str, Any]:
+        """故障场景族：10 键 × oracle 期望派生（mock 也不许硬编码期望）。"""
+        from tcms_ai_testgen.oracle import describe, lookup
+
+        e = lookup(key)
+        assert e is not None, f"oracle 缺 {key}"
+        # 信号断言：若 oracle 给了信号，生成一条 expect_signal 断言
+        expect_ops: list[dict[str, Any]] = [
+            {"op": "expect_action", "args": {"fault": key, "action": e.action}}
+        ]
+        return {
+            "name": f"test_fault_{key}_{i}",
+            "purpose": f"{e.name}故障应触发 {e.action} 处置",
+            "preconditions": "系统运行于 auto 模式",
+            "steps": [f"注入故障 {key}", "查询处置动作", "校验期望"],
+            "expected": describe(key),
+            "covers": ["1"],
+            "tier": "safety",
+            "execution": {
+                "kind": "fault_scenario",
+                "node": "vcu",
+                "fault": key,
+                "expect": expect_ops,
+            },
+        }
 
 
 class OpenAICompatClient(LLMClient):
