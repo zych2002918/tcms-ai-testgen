@@ -49,11 +49,37 @@ kill_rate = 被变异杀死的相关用例数 / 相关用例数（relevant）
 - **口径红线**：只统计「原始版 PASS 且变异版 FAIL」的用例为 killed——原始
   就失败的用例不算杀毒（它没证明断言力）。
 
+## 2c. self_heal_rate —— 反思自愈率（P4 质量证据，docs/experiments/p4-agent）
+
+```
+self_heal_rate = healed / (healed + not_progressed)
+```
+- healed = round1 真实执行 FAIL → 带证据修正 → round2 PASS 的用例数；
+- not_progressed = FAIL 且修正后仍 FAIL（含修正被 diff 门禁拒绝 / 不可编译 /
+  无证据可修）；
+- 分母**不含** stable（本来就 PASS 的用例不参与——它们无需自愈）；
+- **diff 门禁红线**：修正须与失败版 execution 实质不同且不删断言，否则计
+  not_progressed（防「换说法假装自愈」）；修正版不可编译 → 丢弃计
+  not_progressed（防「删失败项假装自愈」）；
+- 实测基线：deepseek-v3.2 三批 22 条 / 5 失败 / 2 healed → 0.40（n 小，
+  仅证明机制可行，无统计意义）。
+
+## 2d. judge 一致性（P4-C，docs/experiments/p4-agent §6）
+
+```
+mean_abs_diff = Σ|rule_score - llm_score| / n      （同 0-100 量纲）
+agreement_rate = |diff|<=15 的用例占比
+```
+- LLM judge 额外给语义可执行性维度（规则 judge 没有）：枚举信号文本断言 /
+  encode 值域 / fault 键已知集——LLM 低分必给 reason；
+- 实测基线（mock 源 7 条）：agreement 1.0 / mean_abs_diff 3.6；分歧最大
+  用例 diff=15（规则满分 vs LLM 因 covers 空扣分）暴露规则盲点。
+
 ## 3. quality_score —— judge 质量分（0-100）
 
 规则 rubric 评分（judge.py）：结构完整度 + 需求可追溯 + 场景设计
 （边界/异常/否定）。一期实测 ~94。二期 P4 与真 LLM-as-judge 交叉验证：
-一致性 ≥0.7（或给出差异分析），届时口径在此追加。
+一致性 ≥0.7（或给出差异分析），实测见 2d。
 
 ## 4. 通用纪律
 

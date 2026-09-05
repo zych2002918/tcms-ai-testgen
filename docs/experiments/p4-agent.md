@@ -71,7 +71,28 @@ oracle_facts 为空（无证据）→ 无法修 → not_progressed（H1 成立�
 「AI 会自我修正」是本项目第一次出现**规则/模板基线结构性做不到**的指标——
 这是 AI 测开叙事从「生成器」升级到「主体」的关键证据。
 
-## 6. 下一步
+## 6. P4-C LLM-as-judge 交叉验证（2026-09-05 实测）
+
+规则 judge（judge.py，结构+可追溯+场景词）vs LLM judge（同 rubric +
+语义可执行性维度，deepseek-v3.2）：
+
+```
+复现：python examples/run_judge_compare.py --source mock_llm --num 8
+mock 源 7 条：agreement_rate = 1.0（|diff|<=15 全一致）
+             mean_abs_diff   = 3.6
+```
+
+观察：
+1. **高度一致但 LLM 更严**：规则给满分 100 的 `test_speed_boundary_ok_2`
+   LLM 只给 85（covers 为空扣追溯分）——diff=15 是最大分歧，暴露规则
+   judge 盲点（mock encode 族 covers 空未被规则捕获）。
+2. **LLM judge 提供语义理由**：reason 显示它真在检查执行语义
+   （"state:2 对应 Fault"、"200.1 超上限 200"、"fault 在已知集"）——
+   这是规则 judge 给不出的维度，也是 judge 交叉验证的价值。
+3. 诚实边界：n=7 单批、mock 源（真 LLM 源 judge 需另跑），不宣称
+   统计结论；只证明「规则+LLM 双 judge 管线可用、差异可量化」。
+
+## 7. 下一步
 
 - 多轮反思（round3+，带上一轮失败原因，限轮次防烧钱）；
 - class2 证据增强：RAG 返回「同信号真实断言写法」而非泛化金标；
