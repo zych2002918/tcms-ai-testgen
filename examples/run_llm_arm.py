@@ -68,9 +68,18 @@ def main() -> int:
     print(f"[llm] model={args.model} 请求 {args.num} 条 ...")
     t0 = time.time()
     raw = client.generate_cases(req)
-    gen_s = round(time.time() - t0, 2)
     payload = extract_json(raw)
     cases, fails = parse_cases(payload)
+    # LLM 输出偶发非 JSON（格式漂移/截断）：重试保 demo 稳定
+    for attempt in range(2):
+        if fails > 0 and len(cases) < max(1, args.num // 2):
+            print(f"[retry {attempt + 1}] LLM 输出解析不足（{len(cases)}/{args.num}），重新生成 ...")
+            raw = client.generate_cases(req)
+            payload = extract_json(raw)
+            cases, fails = parse_cases(payload)
+        else:
+            break
+    gen_s = round(time.time() - t0, 2)
     res = run_real(cases, root)
     exec_s = round(time.time() - t0 - gen_s, 2)
 

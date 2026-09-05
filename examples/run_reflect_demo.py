@@ -59,8 +59,16 @@ def main() -> int:
         num_cases=args.num,
     )
     t0 = time.time()
+    # LLM 输出偶发非 JSON（格式漂移/截断）：最多重试 2 次保证 demo 稳定
     raw = client.generate_cases(req)
     cases, fails = parse_cases(extract_json(raw))
+    for attempt in range(2):
+        if fails > 0 and len(cases) < max(1, args.num // 2):
+            print(f"[retry {attempt + 1}] LLM 输出解析不足（{len(cases)}/{args.num}），重新生成 ...")
+            raw = client.generate_cases(req)
+            cases, fails = parse_cases(extract_json(raw))
+        else:
+            break
     r1 = run_real(cases, root)
     ref = LLMReflector(client, rag_index=rag)
     rep = reflect_loop(cases, root, lambda c, i, s: ref.fix(c, i, s))
