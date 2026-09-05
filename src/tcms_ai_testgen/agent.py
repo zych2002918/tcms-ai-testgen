@@ -256,10 +256,17 @@ class LLMReflector:
         if info.signal and info.message:
             fact = self._signal_facts().get((info.message, info.signal))
             if fact:
+                enum_hint = ""
+                if fact.get("enum"):
+                    # 枚举信号：encode 的 value 必须 raw int，禁止用文本枚举！
+                    enum_hint = (
+                        f"（该信号是枚举信号：encode 的 value 必须用 raw int "
+                        f"{fact['min']}..{fact['max']}，数字对应 {fact['enum']}，"
+                        "禁止填文本！）"
+                    )
                 parts.append(
                     f"该信号真实域值（必须遵守）：{info.message}.{info.signal} "
-                    f"min={fact['min']} max={fact['max']} 枚举={fact.get('enum', '无')} "
-                    f"({fact.get('note', '')})"
+                    f"min={fact['min']} max={fact['max']} {enum_hint}"
                 )
             else:
                 parts.append(
@@ -390,8 +397,30 @@ def reflect_loop(
         return ReflectReport(total=len(cases), outcomes=outcomes,
                              stdout_round1=r1.stdout)
 
-    # round2：用修正版替换失败项，全量重跑
-    round2_cases = [fixed.get(c.name, c) for c in cases]
+    # round2：用修正版替换失败项，全量重跑。修正版必须仍可编译——
+    # 不可编译的修正丢弃（否则它会在 round2 静默缺席 = 假自愈）
+    round2_cases: list[GeneratedCase] = []
+    for c in cases:
+        f = fixed.get(c.name)
+        if f is not None:
+            from tcms_ai_testgen.executor_real import compile_case
+
+            if compile_case(f) is None:
+                # 修正不可编译：不算 fixed，保留原失败用例进 round2
+                fixed.pop(c.name)
+                round2_cases.append(c)
+                continue
+        round2_cases.append(f if c.name in fixed else c)
+    if not fixed:
+        for o in outcomes:
+            if o.round1 == "FAIL":
+                o.round2 = "FAIL"
+                o.transition = "not_progressed"
+            else:
+                o.transition = "stable"
+        return ReflectReport(total=len(cases), outcomes=outcomes,
+                             stdout_round1=r1.stdout)
+
     r2 = run_real(round2_cases, root)
     r2_failed = _failed_names(r2.stdout)
     for o in outcomes:

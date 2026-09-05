@@ -102,8 +102,14 @@ def _compile_encode_bound(ex: object) -> Optional[str]:
             lines.append(f'    with pytest.raises(EncodeError):\n        _encode(db, "{msg}", {sig}={val})')
         elif step.op == "expect_encode_ok":
             # 往返校验：编码成功 + 解码回原值（防「返回错误数据但长度不变」变异漏网）。
-            # 枚举信号：decode 得 VAL_ 文本（如 'Info'），raw 值比较会假失败。
+            # 枚举信号：decode 得 VAL_ 文本（如 'Info'），raw 值比较会假失败；
+            # encode 输入必须是 raw int——若是文本（LLM 常见误解）编译期拒绝。
             texts = ENUM_SIGNAL_TEXTS.get((msg, sig))
+            if isinstance(val, str):
+                raise ValueError(
+                    f"{msg}.{sig} 是枚举信号，encode 必须用 raw int 0-{max(texts) if texts else '?'}，"
+                    f"不能用文本 {val!r}"
+                )
             if texts and isinstance(val, int) and val in texts:
                 decoded_expect = f'"{texts[val]}"'
             elif isinstance(val, int):
@@ -204,7 +210,11 @@ def _compile_fault_scenario(ex: object) -> Optional[str]:
 
 
 def compile_case(case: GeneratedCase) -> Optional[str]:
-    """把一条生成用例编译为真实 pytest 函数源码；无 execution/不可编译返回 None。"""
+    """把一条生成用例编译为真实 pytest 函数源码；无 execution/不可编译返回 None。
+
+    编译期语义错误（如枚举信号 encode 传文本）不崩溃——记不可编译返回 None，
+    由 compile_rate 诚实反映（生成质量含"能不能编译"）。
+    """
     if not case.name.startswith("test_"):
         return None
     ex = case.execution
@@ -213,17 +223,20 @@ def compile_case(case: GeneratedCase) -> Optional[str]:
     if not ex.is_executable():
         return None
     kind = ex.kind
-    if kind == "encode_bound":
-        body = _compile_encode_bound(ex)
-        params = "db"
-    elif kind == "simulate_inject":
-        body = _compile_simulate(ex)
-        params = "bus, db, simulator"
-    elif kind == "fault_scenario":
-        body = _compile_fault_scenario(ex)
-        params = "db"
-    else:
-        return None
+    try:
+        if kind == "encode_bound":
+            body = _compile_encode_bound(ex)
+            params = "db"
+        elif kind == "simulate_inject":
+            body = _compile_simulate(ex)
+            params = "bus, db, simulator"
+        elif kind == "fault_scenario":
+            body = _compile_fault_scenario(ex)
+            params = "db"
+        else:
+            return None
+    except (ValueError, KeyError, TypeError):
+        return None  # 语义错误 → 不可编译（诚实计 compile_rate 缺口）
     if body is None:
         return None
     return f"def {case.name}({params}):\n{body}\n"

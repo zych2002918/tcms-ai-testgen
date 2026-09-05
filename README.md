@@ -35,6 +35,7 @@ LLM 走同一管线可比，也让「生成源质量」可量化对照。
 | 生成源可区分 | 规则基线对 2/3 变异无感知（coverage 1/3）；mock 全覆盖 3/3——只报 pass_rate 会误判「两者都会写测试」| `examples/run_p3_comparison.py` |
 | oracle 防漂移 | oracle↔上游 faultlevel 对拍测试（CI 必跑，键集/等级/处置全等）| `pytest tests/test_oracle_alignment.py` |
 | **真 LLM 可执行** | deepseek-v3.2（阿里云百炼）生成 → compile 100%、真实 pytest 跑通；模型幻觉（AlarmLevel=-1）被真实执行器 EncodeError 当场拦截 | `examples/run_llm_arm.py`（需 DASH_API_KEY）|
+| **AI 自我修正** | 反思闭环：失败 → 分类 → 带证据（oracle 域值 + RAG 金标）修正 → 重验。实测 22 条 5 失败 2 自愈（self-heal_rate 0.40）——规则/模板基线结构性做不到 | `examples/run_reflect_demo.py` |
 | 语义鸿沟实证 | 首版车门断言按数字 2 真实执行失败（上游解码是 VAL_ 文本 'Fault'）——mock 启发式永远抓不到 | docs/experiments/p2-real-executor.md |
 
 ## 快速开始
@@ -68,6 +69,8 @@ python -m tcms_ai_testgen.cli --llm --target "TCMS 超速防护"
 - `llm.py` — 客户端抽象：`MockLLMClient`（DSL 一致性套件）/ `OpenAICompatClient`（真实）
 - `executor_real.py` — **真实执行器**：execution DSL → 真实 pytest（上游环境跑）
 - `mutation.py` — **变异杀毒**：行为翻转 × 生成用例，精准 kill_rate
+- `rag.py` — **RAG 金标索引**：上游 635 手写用例 → 检索（生成/修正证据）
+- `agent.py` — **反思 harness**：失败分类 + diff 门禁 + 修正闭环（self-heal）
 - `baseline_rule.py` — 规则基线生成源（对照臂，证明质量可区分）
 - `pipeline.py` / `judge.py` / `executor.py` / `prompt.py` — 一期骨架（mock 质量信号）
 - `cli.py` — CLI 入口
@@ -94,9 +97,10 @@ LLM 非确定性：CI 只跑 mock 离线；真实执行实验固定 seed/温度�
 - [x] P3b 变异杀毒实验 + 生成源对比（质量证据）+ oracle 对拍防漂移
 - [x] P3c 真 LLM prompt 契约（execution DSL 已入 system prompt + 资产事实注入）
 - [x] P3d 真 LLM 臂实测（deepseek-v3.2：compile 100%、幻觉被真实执行拦截，见 docs/experiments/p3-llm-real.md）
+- [x] P4 RAG（金标检索）+ 反思 harness（AI 自愈闭环，self-heal 0.40，见 docs/experiments/p4-agent.md）
 - [ ] 多模型 × 多批正式对比（v4-flash / v3.2 / r1；当前为单模型小样本）
-- [ ] 组合空间扩展：fault × mode(rm 等) × recover 时序（当前仅 auto 一列，见 decisions D3）
-- [ ] 真 LLM-as-judge 与规则 rubric 交叉验证
+- [ ] 多轮反思（round3+）与 class2 证据增强
+- [ ] LLM-as-judge 与规则 rubric 交叉验证
 
 ## License
 

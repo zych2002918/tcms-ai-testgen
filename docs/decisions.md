@@ -73,3 +73,24 @@ CI checkout zych2002918/tcms-can-test 到工作区平级并装运行依赖，使
 - prompt 已补 send_alarm level ∈ 0-3 显式约束减少该类幻觉；
 - **安全**：key 只走环境变量（DASH_API_KEY），不落任何仓库文件；用户可随时
   在百炼控制台轮换。
+
+## D6（2026-09-05）P4 RAG + 反思 Harness（对抗审查采纳 + 实测）
+
+用户要求把 AI 测做深（RAG/工具/harness）。对抗审查（subagent）核心裁定全部采纳：
+1. **diff 门禁防退化**：修正须与失败版 execution 实质不同且不删断言，否则
+   unhealed（防「换说法假装自愈」）；
+2. **证据分层**：class1 域值幻觉靠 oracle 域值事实；class2 断言错配靠 RAG
+   金标；class3 目标不支持 → 计 replaced 不算 healed（RAG 零命中是判据）；
+3. **mock 注入臂为主证据**（离线可复现），真 LLM 1-2 批仅 demo；
+4. 只修失败项 + 全量重跑（按 name 归因，禁改坏已过项）。
+
+实测（deepseek-v3.2）：
+- class1 healed 实证：AlarmLevel=-1 → oracle 证据 → 修到 0 → round2 PASS；
+- 3 批 × 8 条：22 生成 / 5 失败 / 2 healed / 3 np → **self-heal_rate 0.40**；
+- 枚举信号 encode 传文本（'Emergency'）是 LLM 新幻觉形态 → executor_real
+  编译期拒绝（字符串 value → 不可编译计 compile_rate 缺口，不崩溃）；
+- expect_encode_ok 往返断言修复：枚举信号 decode 是 VAL_ 文本，raw 比较
+  假失败 → 编译器按 ENUM_SIGNAL_TEXTS 映射文本断言。
+
+「AI 自我修正」= 规则/模板基线结构性做不到的指标（self-heal_rate），
+AI 测开叙事升级点。class2 单轮自愈率低 → 多轮反思记下一步。
