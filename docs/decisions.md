@@ -58,3 +58,18 @@ mutant coverage 1/3 vs mock 3/3）——mock 臂仅代表该模板生成器，�
 
 CI checkout zych2002918/tcms-can-test 到工作区平级并装运行依赖，使真实执行/
 变异/对拍测试参与覆盖率（本地无上游时 cov 81% 属已知降级，README 已注明）。
+
+## D5（2026-09-05）真 LLM 臂实测（deepseek-v3.2 @ 阿里云百炼）
+
+用户提供百炼 key（sk-ws- 开头）后接入：
+- OpenAICompatClient + asset_context（asset_prompt.build_prompt_context 从
+  AssetBundle 自动构造 DBC 枚举/范围事实）→ prompt v2 契约实测有效：
+  **真 LLM 产出 100% 可编译 execution**（red-team 高2 修复的验收）；
+- 真实执行器抓到模型幻觉：send_alarm AlarmLevel=-1（编造域值）→ EncodeError
+  当场拦截——「真实执行」环节必要性的活证据（parse 查不出域值幻觉）；
+- 杀毒随批次波动（encode 全杀、door 窄、overspeed 可能缺席）→ mock 是
+  DSL 一致性下界，LLM 增量需多批实测，单批数字不宣称优劣（报告
+  docs/experiments/p3-llm-real.md）；
+- prompt 已补 send_alarm level ∈ 0-3 显式约束减少该类幻觉；
+- **安全**：key 只走环境变量（DASH_API_KEY），不落任何仓库文件；用户可随时
+  在百炼控制台轮换。

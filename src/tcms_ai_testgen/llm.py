@@ -211,6 +211,7 @@ class OpenAICompatClient(LLMClient):
         api_key: Optional[str] = None,
         temperature: float = 0.3,
         timeout: float = 60.0,
+        asset_context: Optional[str] = None,
     ) -> None:
         try:
             from openai import OpenAI  # 延迟导入：离线模式不需要
@@ -223,6 +224,8 @@ class OpenAICompatClient(LLMClient):
         self._model = model
         self._temperature = temperature
         self._timeout = timeout
+        #: prompt 资产事实上下文（DBC 枚举/范围 + 故障键），防模型幻觉
+        self.asset_context = asset_context
 
     def generate_cases(self, req: GenRequest) -> str:  # pragma: no cover - 真实网络路径
         from tcms_ai_testgen.prompt import build_system_prompt, build_user_prompt
@@ -232,7 +235,7 @@ class OpenAICompatClient(LLMClient):
             temperature=self._temperature,
             timeout=self._timeout,
             messages=[
-                {"role": "system", "content": build_system_prompt()},
+                {"role": "system", "content": build_system_prompt(self.asset_context)},
                 {"role": "user", "content": build_user_prompt(req)},
             ],
         )

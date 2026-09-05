@@ -59,6 +59,8 @@ _SYSTEM_PROMPT = """你是一位资深的软件测试工程师，擅长为安全
 方向规则（重要，防 raw/decoded 混淆）：
   - encode_bound 的 value 一律是**物理值**（如车速 200.1 越界 / 200.0 合法）；
   - simulate_inject 的 set_door_state state 是 **raw 0-3**；
+  - send_alarm 的 level 必须是 **0-3**（AlarmLevel 枚举 Info/Warning/Severe/Emergency），
+    禁止负数或大于 3；
   - expect_signal 的 equals：该信号若有 VAL_ 枚举文本（如 Door2State），
     必须用**文本**（"Closed"/"Open"/"Fault"/"Unknown"），禁止用数字 0-3；
     无量纲/连续信号用数值（如 SpeedKmh==165.0、AllDoorsClosed==0/1）。
