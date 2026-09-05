@@ -51,7 +51,7 @@
         "pantograph_arc": "emergency_brake",
         "traction_brake_conflict": "emergency_brake"
       },
-      "note": "可组合维度：fault × mode(auto/rm) × recover 时序 × 信号断言（手写 777 未穷举 fault×mode 笛卡尔空间）"
+      "note": "当前覆盖 fault×action 矩阵（auto 模式一列）；fault×mode×时序 组合空间未实现（docs/decisions.md D3），是下一步而非已完成的增量"
     }
   },
   "observation": "手写例以 fault/bus/brake/模块行为为主；生成 DSL 提供 fault×action 的系统化组合（含 mode 敏感处置维度），二者是互补而非替代：手写=金标深度，生成=组合广度。量化集合差需上游 rtm.csv（future work）。"

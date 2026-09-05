@@ -30,9 +30,10 @@ LLM 走同一管线可比，也让「生成源质量」可量化对照。
 
 | 证据 | 结果 | 复现 |
 |---|---|---|
-| 真实执行通过率 | mock 生成 34 条 → 真实 pytest **34/34 passed**（compile 100%）| `examples/demo_full_loop.py --num 40` |
-| **变异杀毒** | 3 个行为翻转（车门故障被吞 / 编码不拒越界 / 超速处置翻转）**全部被生成用例杀死**（kill_rate 1.0）| 同上 `--mutation` |
+| 真实执行通过率 | mock 生成 34 条（requested 40，6 条故意残缺）→ 真实 pytest **34/34 passed**（compile 100%）| `examples/demo_full_loop.py --num 40` |
+| **变异杀毒** | 3 个选定行为翻转（车门故障被吞 / 编码不拒越界 / 超速处置翻转）**全被杀死**（kill_rate 1.0，按相关用例分母）| 同上 `--mutation` |
 | 生成源可区分 | 规则基线对 2/3 变异无感知（coverage 1/3）；mock 全覆盖 3/3——只报 pass_rate 会误判「两者都会写测试」| `examples/run_p3_comparison.py` |
+| oracle 防漂移 | oracle↔上游 faultlevel 对拍测试（CI 必跑，键集/等级/处置全等）| `pytest tests/test_oracle_alignment.py` |
 | 语义鸿沟实证 | 首版车门断言按数字 2 真实执行失败（上游解码是 VAL_ 文本 'Fault'）——mock 启发式永远抓不到 | docs/experiments/p2-real-executor.md |
 
 ## 快速开始
@@ -89,9 +90,10 @@ LLM 非确定性：CI 只跑 mock 离线；真实执行实验固定 seed/温度�
 - [x] P1 真实资产解析（DBC + 13 场景，坏文件诚实统计）
 - [x] P2 真实执行器（execution DSL v1：关键词 → 真实 pytest）
 - [x] P3a execution DSL（白名单原语 + oracle 派生期望，mock 可编译率 100%）
-- [x] P3b 变异杀毒实验 + 生成源对比（质量证据）
-- [ ] 真实 LLM 对比臂（OpenAICompatClient 已就绪，接 key 即跑，不改变实验结构）
-- [ ] 组合增量量化（生成集 − 777 手写已覆盖，对上游 rtm.csv 做集合差）
+- [x] P3b 变异杀毒实验 + 生成源对比（质量证据）+ oracle 对拍防漂移
+- [x] P3c 真 LLM prompt 契约（execution DSL 已入 system prompt + 资产事实注入）
+- [ ] 真实 LLM 对比臂（OpenAICompatClient 已就绪，prompt 契约同款，接 key 即同管线）
+- [ ] 组合空间扩展：fault × mode(rm 等) × recover 时序（当前仅 auto 一列，见 decisions D3）
 - [ ] 真 LLM-as-judge 与规则 rubric 交叉验证
 
 ## License

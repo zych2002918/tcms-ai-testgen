@@ -29,6 +29,7 @@ ACTION_NONE = "none"
 ACTION_WARNING = "warning"
 ACTION_DERATE = "derate"
 ACTION_EB = "emergency_brake"
+ACTION_SHUTDOWN = "shutdown"  # 对齐上游 faultlevel（镜像完整处置域）
 
 #: 等级
 LEVEL_INFO = "info"
@@ -50,7 +51,8 @@ FAULT_LEVELS: dict[str, str] = {
     "pantograph_arc": LEVEL_CRITICAL,
 }
 
-#: 等级 → 默认处置（faultlevel.LEVEL_ACTION）
+#: 等级 → 默认处置（镜像上游 faultlevel.LEVEL_ACTION，实测仅 4 键；
+#: shutdown 只存在于 ACTION_PRIORITY 域，10 故障键无 shutdown 级）
 LEVEL_ACTION: dict[str, str] = {
     LEVEL_INFO: ACTION_NONE,
     LEVEL_MINOR: ACTION_WARNING,

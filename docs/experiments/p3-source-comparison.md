@@ -62,14 +62,18 @@ H2（变异覆盖是质量标尺）：只覆盖单一语义族的生成源（如
 4. **诚实边界**：本实验不含真实 LLM（环境无 key/本地模型，见 decisions.md
    D2）。结论限定为「该 DSL + 量化管线能区分生成源质量、能杀毒」；
    mock 臂数字不代表任何具体 LLM 的质量。真 LLM 走 OpenAICompatClient
-   （同契约同管线），接 key 即可补臂，不改变实验结构。
+   （同契约同管线——prompt v2 已强制 execution DSL 输出），接 key 即可
+   补臂；补臂属实验执行，无需改管线结构。
 
-## 6. 与 777 手写用例的关系（组合增量）
+## 6. 与 777 手写用例的关系（组合增量，诚实边界）
 
-mock 臂 fault_scenario 族按 10 故障键 × 处置动作轮转，覆盖
-faultlevel 全语义面（info→none / minor→warning / major→derate /
-critical→emergency_brake × recover 时序变体待扩展）。上游 777 手写用例
-覆盖了 13 场景，但「故障键 × mode × recover 时机」的笛卡尔组合未穷举
-（上游 faultlevel 模式敏感处置：major 在 rm 模式仅 warning）——这正是
-生成器可做组合增量而手写用例难穷举的维度（量化为生成集 − 手写已覆盖，
-future work 需对上游 rtm.csv 做集合差）。
+mock 臂 fault_scenario 族按 10 故障键 × 处置动作轮转，覆盖 faultlevel 全语义面
+（info→none / minor→warning / major→derate / critical→emergency_brake）。
+手写 777 例覆盖 13 场景 + 各模块行为深度；生成 DSL 提供的是**系统化的
+fault × action 矩阵**（规则/机械方式难穷举的枚举组合）。
+
+**边界（red-team D3 修正）**：上游 faultlevel 的模式敏感处置（major 在 rm
+模式仅 warning）与 fault×mode×recover 笛卡尔组合**尚未实现**——oracle/mock/
+executor 三层当前只支持 auto 模式一列。任何「mode 维度组合增量」的表述均为
+空头支票；组合空间扩展记 backlog（需 oracle 加 mode 列 + DSL 加 mode 参数 +
+编译层透传），届时对上游 rtm.csv 做集合差量化。

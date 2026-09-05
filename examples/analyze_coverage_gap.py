@@ -69,7 +69,8 @@ def analyze_generator() -> dict:
         "families": ["encode_bound", "simulate_inject", "fault_scenario"],
         "combinatorial_dimensions": {
             "fault_x_action": {k: lookup(k).action for k in keys},
-            "note": "可组合维度：fault × mode(auto/rm) × recover 时序 × 信号断言（手写 777 未穷举 fault×mode 笛卡尔空间）",
+            "note": "当前覆盖 fault×action 矩阵（auto 模式一列）；fault×mode×时序 "
+                    "组合空间未实现（docs/decisions.md D3），是下一步而非已完成的增量",
         },
     }
 

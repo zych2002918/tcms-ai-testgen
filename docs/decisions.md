@@ -34,3 +34,27 @@ full 自由代码生成（P2 实证 + 安全）。
 手工（上游 777 例抽样金标）。**不声称任何 LLM 质量数字**，结论限定为
 「该 DSL+管线能区分生成源、能通过变异杀毒检出 sim 行为翻转」，真 LLM 通道
 （OpenAICompatClient）接 key 即用，文档诚实标注。
+
+## D3（2026-09-05）Red-team 终审处置记录
+
+终审发现 3 高 + 2 中 + 1 低 + 777 叙事硬伤。处置：
+
+| # | 发现 | 处置 |
+|---|---|---|
+| 高1 | oracle 静态镜像与上游可能漂移且零对拍 | ✅ tests/test_oracle_alignment.py：CI checkout 上游后 subprocess 对拍键集/等级/LEVEL_ACTION（实测通过）|
+| 高2 | 真 LLM prompt 无 execution 契约 → 永不产出可编译用例，「接 key 即补臂」夸大 | ✅ prompt.py v2：execution DSL 契约 + few-shot + raw/decoded 方向规则 + 资产事实注入（build_asset_context）；README/guide 表述同步改「契约已就绪，接 key 即同管线」|
+| 高3 | kill_rate 自证：变异集只覆盖 mock 恰好断言的面 | ⚠️ 文档诚实：结论限定「3 个被选中行为翻转全杀」；relevant=0（未测）≠ 0 分，报告明示；变异面扩展（心跳/叠加/mode）记 backlog |
+| 中4 | fault_scenario 纯查表（回声风险）| ⚠️ 文档定位：fault_scenario 断言 = 处置逻辑契约测试（oracle 与上游 faultlevel 一致性由对拍守）；不宣称测平台运行时行为；真场景链（ScenarioRunner）注入记 backlog |
+| 中5 | exec_pass 分母=compiled 非 requested | ✅ 口径已写 metrics.md；README「34/34」补注 requested=40 |
+| 777 | 「fault×mode 组合增量」空头支票（三层均不支持 mode）| ⚠️ 实验报告改写：当前增量=10 键 × 处置动作矩阵 + 信号断言族；mode 维度的组合增量删除，记 backlog |
+
+**可宣称的最大结论（一句话）**：构建了一条可复现的量化管线，证明「受约束
+DSL + oracle 派生 + 真实执行 + 变异杀毒」能区分生成源质量（规则基线
+mutant coverage 1/3 vs mock 3/3）——mock 臂仅代表该模板生成器，不代表任何 LLM。
+**必须避免宣称**：真 LLM 质量数字（未跑）；「kill_rate 1.0 证明断言力」（仅对
+3 个被选中变异）；「组合增量含 mode 维度」（未实现）。
+
+## D4（2026-09-05）CI 集成上游
+
+CI checkout zych2002918/tcms-can-test 到工作区平级并装运行依赖，使真实执行/
+变异/对拍测试参与覆盖率（本地无上游时 cov 81% 属已知降级，README 已注明）。
