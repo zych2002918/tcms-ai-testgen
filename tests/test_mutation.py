@@ -10,8 +10,9 @@ from tcms_ai_testgen.mutation import (
     MUTATION_TARGETS,
     MUTATIONS,
     MutationResult,
-    _compile_with_patch,
+    _compute_killed,
     _failed_case_names,
+    build_mutant_file,
     list_mutations,
     mutation_patch,
     mutation_relevant,
@@ -89,13 +90,38 @@ class TestHelpers:
         assert _failed_case_names(out) == {"test_door_fault"}
         assert _failed_case_names("3 passed in 1s") == set()
 
-    def test_compile_with_patch_injects_fixture(self) -> None:
+    def test_build_mutant_file_injects_fixture(self) -> None:
         c = _case("test_door", _DOOR)
-        code = _compile_with_patch([c], "import tcms.simulator as _sim\n_orig = 1\n")
+        code, names = build_mutant_file([c], "door_fault_ignored")
+        assert code is not None
+        assert names == ["test_door"]
         assert "@pytest.fixture(autouse=True)" in code
-        assert "_mutate" in code
+        assert "def _mutate" in code
         assert "test_door" in code
         assert "import tcms.simulator" in code
+
+    def test_build_mutant_file_none_when_uncompilable(self) -> None:
+        c = GeneratedCase(name="test_x", purpose="p", expected="e")  # 无 execution
+        code, names = build_mutant_file([c], "door_fault_ignored")
+        assert code is None
+        assert names == []
+
+    def test_compute_killed_pure(self) -> None:
+        base_out = "3 passed\n"
+        mut_out = (
+            "1 failed, 2 passed in 1s\n"
+            "FAILED tests/x.py::test_door_fault - AssertionError: a\n"
+            "FAILED tests/x.py::test_speed - AssertionError: b\n"
+        )
+        # 只统计相关且原始 PASS 的用例
+        assert _compute_killed(mut_out, base_out, ["test_door_fault", "test_speed"]) == 2
+        # 原始版就失败的用例不算杀毒
+        base_out_fail = "2 passed, 1 failed\nFAILED tests/x.py::test_door_fault - x\n"
+        assert _compute_killed(mut_out, base_out_fail, ["test_door_fault", "test_speed"]) == 1
+        # 变异版 no tests ran → 0（防御）
+        assert _compute_killed("no tests ran in 0.1s", base_out, ["test_door_fault"]) == 0
+        # 不相关用例（不在名单）不算
+        assert _compute_killed(mut_out, base_out, []) == 0
 
 
 class TestRealMutation:

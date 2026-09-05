@@ -178,27 +178,54 @@ class MutationResult:
         }
 
 
-def _compile_with_patch(cases: list[GeneratedCase], patch_code: str) -> str:
-    """把用例编译为 pytest 文件，并在头部注入变异 patch fixture。"""
+def build_mutant_file(cases: list[GeneratedCase], mutation: str) -> tuple[str | None, list[str]]:
+    """生成变异版 pytest 文件源码（纯函数，离线可测）。
+
+    返回 (code, compiled_case_names)；无一条可编译返回 (None, [])。
+    """
+    patch = mutation_patch(mutation)
     bodies: list[str] = []
+    names: list[str] = []
     for case in cases:
         body = compile_case(case)
-        if body is not None:
-            bodies.append(body)
+        if body is None:
+            continue
+        bodies.append(body)
+        names.append(case.name)
+    if not bodies:
+        return None, []
     code = _HEADER + "\n"
-    code += """
-import pytest
-
-
-@pytest.fixture(autouse=True)
-def _mutate(monkeypatch):
-    # 注入变异：替换被测对象行为（见 mutation 库）
-"""
-    # patch 代码缩进进 fixture 体
-    for ln in patch_code.strip().splitlines():
+    code += (
+        "\nimport pytest\n\n\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def _mutate(monkeypatch):\n"
+        "    # 注入变异：替换被测对象行为（见 mutation 库）\n"
+    )
+    for ln in patch.strip().splitlines():
         code += "    " + ln + "\n"
     code += "\n\n" + "\n\n".join(bodies) + "\n"
-    return code
+    return code, names
+
+
+def _compute_killed(
+    stdout: str, baseline_stdout: str, relevant_compiled: list[str]
+) -> int:
+    """从变异版/原始版 pytest 输出计算杀毒数（纯函数，离线可测）。
+
+    只统计「原始版 PASS 且变异版 FAIL」的相关用例；变异版未收集到任何
+    用例（patch 语法错等）时返回 0（如实反映，不误报杀毒）。
+    """
+    if "no tests ran" in stdout:
+        return 0
+    failed_names = _failed_case_names(stdout)
+    baseline_failed_names = _failed_case_names(baseline_stdout)
+    killed = 0
+    for name in relevant_compiled:
+        if name in baseline_failed_names:
+            continue  # 原始版就失败：不算杀毒（它没证明任何东西）
+        if name in failed_names:
+            killed += 1
+    return killed
 
 
 def run_mutation(
@@ -215,45 +242,36 @@ def run_mutation(
     baseline 传原始版结果可跳过重复跑原始版（默认自动跑一遍拿 total）。
     """
     root = Path(upstream_root)
-    patch = mutation_patch(mutation)
     relevant_fn = mutation_relevant(mutation)
     relevant_names = {c.name for c in cases if relevant_fn(c) and compile_case(c) is not None}
+    code, compiled_names = build_mutant_file(cases, mutation)
+    if code is None:
+        return MutationResult(mutation=mutation, total=0, relevant=0, killed=0, survived=0)
 
     # 先跑原始版（拿 baseline total = 原始 PASS 数）
-    if baseline is None:
+    if baseline is None:  # pragma: no cover - 需上游
         from tcms_ai_testgen.executor_real import run_real
 
         baseline = run_real(cases, root)
 
-    if not (root / "tests" / "conftest.py").is_file():
+    if not (root / "tests" / "conftest.py").is_file():  # pragma: no cover - 需上游
         raise FileNotFoundError(f"非 tcms-can-test 仓库根: {root}")
     tests_dir = root / "tests"
     gen_path = tests_dir / "test_ai_generated_mutant.py"
-    gen_path.write_text(_compile_with_patch(cases, patch), encoding="utf-8")
+    gen_path.write_text(code, encoding="utf-8")
 
     py = root / ".venv" / "Scripts" / "python.exe"
     cmd = [str(py) if py else "python", "-m", "pytest", str(gen_path), "-q", "--no-header"]
     proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, encoding="utf-8",
-                          errors="replace", timeout=180)
-    stdout = proc.stdout
-    # 变异版统计：逐用例判定 FAIL/PASS。不能靠汇总数——不相关用例可能因
-    # 变异副作用连带失败（不算杀毒）；必须只统计相关用例的失败。
-    failed_names = _failed_case_names(stdout)
-    baseline_failed_names = _failed_case_names(baseline.stdout) if baseline is not None else set()
+                          errors="replace", timeout=180)  # pragma: no cover - subprocess
+    stdout = proc.stdout  # pragma: no cover
 
+    baseline_stdout = baseline.stdout if baseline is not None else ""
     total = baseline.passed if baseline else 0
-    relevant_compiled = [c.name for c in cases if c.name in relevant_names]
-    killed = 0
-    for name in relevant_compiled:
-        if name in baseline_failed_names:
-            continue  # 原始版就失败：不算杀毒（它没证明任何东西）
-        if name in failed_names:
-            killed += 1
-    # 防御：变异版未收集到任何用例（patch 语法错等）——killed 归零如实反映
-    if "no tests ran" in stdout:
-        killed = 0
+    relevant_compiled = [n for n in compiled_names if n in relevant_names]
+    killed = _compute_killed(stdout, baseline_stdout, relevant_compiled)  # pragma: no cover
 
-    if not keep_artifacts:
+    if not keep_artifacts:  # pragma: no cover - 文件清理随执行
         try:
             gen_path.unlink()
         except OSError:
@@ -281,7 +299,11 @@ __all__ = [
     "MUTATIONS",
     "MUTATION_TARGETS",
     "MutationResult",
+    "_compute_killed",
+    "_failed_case_names",
+    "build_mutant_file",
     "list_mutations",
     "mutation_patch",
+    "mutation_relevant",
     "run_mutation",
 ]

@@ -14,6 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout upstream tcms-can-test (real-exec integration target)
+        # 真实执行器/变异杀毒需上游被测平台；浅克隆到工作区平级
+        uses: actions/checkout@v4
+        with:
+          repository: zych2002918/tcms-can-test
+          path: ../tcms-can-test
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -21,9 +27,16 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e ".[test]"
+          # 上游被测平台的运行依赖（真实执行时 subprocess 需要）
+          pip install python-can cantools pyyaml pytest pytest-cov
       - name: Lint
         run: ruff check .
       - name: Test with coverage gate
+        # 上游在平级目录；TCMS_UPSTREAM_ROOT 显式指向避免误判
+        env:
+          TCMS_UPSTREAM_ROOT: ${{ github.workspace }}/../tcms-can-test
         run: pytest tests --cov=tcms_ai_testgen --cov-fail-under=90 -q
-      - name: Selfcheck
+      - name: Selfcheck (real-exec mode against upstream)
+        env:
+          TCMS_UPSTREAM_ROOT: ${{ github.workspace }}/../tcms-can-test
         run: python scripts/selfcheck.py

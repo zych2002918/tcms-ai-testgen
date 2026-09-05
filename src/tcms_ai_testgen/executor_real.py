@@ -237,6 +237,25 @@ class RealExecResult:
         }
 
 
+def build_test_file(cases: list[GeneratedCase]) -> tuple[str | None, int]:
+    """把一批用例编译成 pytest 文件源码（纯函数，离线可测）。
+
+    返回 (code, compiled_count)；无一条可编译时返回 (None, 0)。
+    """
+    bodies: list[str] = []
+    compiled_count = 0
+    for case in cases:
+        body = compile_case(case)
+        if body is None:
+            continue
+        bodies.append(body)
+        compiled_count += 1
+    if not bodies:
+        return None, 0
+    code = _HEADER + "\n\n" + "\n\n".join(bodies) + "\n"
+    return code, compiled_count
+
+
 def run_real(
     cases: list[GeneratedCase],
     upstream_root: str | Path,
@@ -253,23 +272,14 @@ def run_real(
     """
     root = Path(upstream_root)
 
-    bodies: list[str] = []
-    compiled_count = 0
-    for case in cases:
-        body = compile_case(case)
-        if body is None:
-            continue
-        bodies.append(body)
-        compiled_count += 1
-    if not bodies:
+    code, compiled_count = build_test_file(cases)
+    if code is None:
         # 无一条可编译：不需要上游环境，直接返回（口径：compile_rate=0）
         return RealExecResult(total=len(cases), compiled=0, passed=0, failed=0)
 
-    if not (root / "tests" / "conftest.py").is_file():
+    if not (root / "tests" / "conftest.py").is_file():  # pragma: no cover - 需上游
         raise FileNotFoundError(f"非 tcms-can-test 仓库根: {root}")
     tests_dir = root / "tests"
-
-    code = _HEADER + "\n\n" + "\n\n".join(bodies) + "\n"
 
     # 写入上游 tests/（conftest 可见）——不落根目录避免污染
     gen_path = tests_dir / "test_ai_generated_p2.py"
@@ -279,7 +289,7 @@ def run_real(
     if not py.is_file():  # 环境探测失败就退回 PATH python
         py = None
     cmd = [str(py) if py else "python", "-m", "pytest", str(gen_path), "-q", "--no-header"]
-    proc = subprocess.run(
+    proc = subprocess.run(  # pragma: no cover - subprocess 需上游环境
         cmd,
         cwd=root,
         capture_output=True,
