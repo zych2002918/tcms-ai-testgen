@@ -24,14 +24,30 @@ parse_rate = (parsed_yaml + parsed_dbc) / (parsed + bad)
 
 ## 2. exec_pass_rate —— 真实执行通过率
 
-一期（mock）：确定性执行器口径（compile/pass 判定，见 executor.py）。
-二期（P1 后）：真实 pytest —— 生成用例在 tcms-can-test 上真实执行：
+二期（DSL 时代，现行口径）：真实 pytest —— 生成用例编译后在 tcms-can-test
+上游环境执行（executor_real.run_real）：
 ```
-exec_pass_rate = 真实执行的通过用例数 / 实际可执行用例总数
+exec_pass_rate = 真实 pytest 通过用例数 / 实际可编译用例数（compiled）
+compile_rate   = 可编译用例数 / 总生成用例数（含无 execution 者）
 ```
-- 分母 = 生成用例中能映射到真实 pytest（可编译）的用例数；
-- 无法编译/无法映射的用例记 fail，不剔除（口径一致：生成质量含"能不能跑"）；
+- 分母 = 编译成功（compile_case 非 None）的用例数；无 execution / 语义不可
+  编译的用例不计入分母，但通过 compile_rate 反映（生成质量含"能不能跑"）；
+- 一期遗留的启发式执行器（executor.py run_deterministic）只作离线质量信号，
+  不再是 exec_pass_rate 的权威来源（pipeline 内 mock 口径保留仅为自检展示）；
 - LLM 非确定性：CI 用 mock/录播，真实执行实验固定 seed/temperature。
+
+## 2b. kill_rate —— 变异杀毒率（质量证据，docs/experiments/p3）
+
+```
+kill_rate = 被变异杀死的相关用例数 / 相关用例数（relevant）
+```
+- 相关用例 = 其断言覆盖该变异翻转行为的用例（mutation_relevant 判定）；
+- 分母**只用相关用例**：不相关用例在变异版上 survive 属正常，不算漏网；
+  附带报告 overall_kill_rate（分母=全部）仅供对比；
+- 变异 = 对上游真实行为的受控翻转（不改上游源码，patch 注入生成文件）：
+  door_fault_ignored / encode_never_rejects / overspeed_action_flipped；
+- **口径红线**：只统计「原始版 PASS 且变异版 FAIL」的用例为 killed——原始
+  就失败的用例不算杀毒（它没证明断言力）。
 
 ## 3. quality_score —— judge 质量分（0-100）
 
@@ -43,14 +59,17 @@ exec_pass_rate = 真实执行的通过用例数 / 实际可执行用例总数
 
 - 每个数字必须能复现：对应命令/文件写进 docs/experiments/ 或本节；
 - 实验一律控制变量：一次只改一个变量，其余固定并记录；
-- 覆盖率口径：pytest-cov `--cov-fail-under=90`（branch=true，source=tcms_ai_testgen）。
+- 覆盖率口径：pytest-cov `--cov-fail-under=90`（branch=true，source=tcms_ai_testgen）；
+- **质量 ≠ pass_rate**：通过率只是「能跑」，断言力须看 kill_rate/变异覆盖
+  （p3 实验实证：两臂 pass 均 1.0 但 mutant_coverage 1/3 vs 3/3）。
 
-## 5. 一期实测基线（P0/P1 完成时点）
+## 5. 实测基线（随阶段更新）
 
 | 指标 | 值 | 复现命令 |
 |---|---|---|
-| parse_rate（mock 生成） | 0.875 | `python scripts/selfcheck.py` |
-| quality_score（mock） | 94.3 | 同上 |
-| exec_pass_rate（mock） | 1.0 | 同上 |
+| parse_rate（mock 生成，num=40） | 0.85（含故意残缺） | `python examples/demo_full_loop.py --num 40` |
+| compile_rate / exec_pass_rate（mock→真实） | 1.0 / 1.0（34/34） | 同上 |
+| kill_rate（3 变异，相关口径） | 1.0 / 1.0 / 1.0 | 同上 `--mutation` |
+| 生成源区分度 | mutant_coverage 1/3 vs 3/3 | `python examples/run_p3_comparison.py` |
 | parse_rate（真实资产） | 1.0（1 DBC + 13 场景） | `python examples/demo_assets.py` |
-| 测试门禁 | 64 passed / 92.16% / ruff 过 | `pytest tests --cov=tcms_ai_testgen -q` |
+| 测试门禁 | 106 passed / 90.95% / ruff / selfcheck | `pytest tests --cov=tcms_ai_testgen -q` |
