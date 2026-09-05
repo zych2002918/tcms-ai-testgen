@@ -30,6 +30,9 @@ python scripts/selfcheck.py
 # 跑默认演示（EBM 紧急制动场景，mock）
 python -m tcms_ai_testgen.cli --num 8
 
+# 加载真实资产摘要（tcms-can-test 的 DBC + 13 个场景；可用 TCMS_UPSTREAM_ROOT 指路径）
+python examples/demo_assets.py
+
 # 真实 LLM（需 pip install .[llm]，配置 DEEPSEEK_API_KEY）
 python -m tcms_ai_testgen.cli --llm --target "ATP 超速防护"
 ```
@@ -54,6 +57,8 @@ python -m tcms_ai_testgen.cli --llm --target "ATP 超速防护"
 - `executor.py`— 确定性执行器：把自然语言用例映射到可执行检查（compile/pass 口径）
 - `judge.py`   — 质量评分：结构完整度 + 需求可追溯 + 场景设计（边界/异常）
 - `pipeline.py`— 编排：生成 → 解析 → 执行 → 打分，永不抛业务异常
+- `asset_models.py` / `asset_loader.py` — 真实资产接入（P1）：解析 tcms-can-test 的
+  DBC（8 报文 / 36 信号）与场景 YAML（13 个）为结构化输入，坏文件容错 + 诚实 parse_rate
 
 ## 质量口径（面试可讲）
 
@@ -65,9 +70,10 @@ python -m tcms_ai_testgen.cli --llm --target "ATP 超速防护"
 
 ## Roadmap（二期）
 
-- [ ] 接入 `tcms-can-test`：解析其 DBC/场景库为生成输入，生成用例跑真实 pytest
-- [ ] 真实 LLM 对比实验：DeepSeek 等模型 × 多组需求，输出对比表
-- [ ] 真 LLM-as-judge：把 rubric 注入 prompt 替代规则评分
+- [x] 接入 `tcms-can-test`：解析其 DBC/场景库为生成输入（P1：asset_loader + 单测 91%）
+- [ ] P2 真实执行：生成用例 → 真 pytest → tcms-can-test 跑通 ≥1 条
+- [ ] P3 真实 LLM 对比实验：DeepSeek 等模型 × 多组需求，输出对比表
+- [ ] P4 真 LLM-as-judge：把 rubric 注入 prompt 替代规则评分
 - [ ] Agent 模式：多轮 self-critique 迭代修正生成用例
 
 ## License
