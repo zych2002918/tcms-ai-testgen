@@ -43,7 +43,16 @@ def main() -> int:
 
     api_key = os.environ.get("LLM_API_KEY") or os.environ.get("DASH_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
-        print("[!] 需要 API key：DASH_API_KEY / LLM_API_KEY / DEEPSEEK_API_KEY")
+        try:  # 回退：DSH .credentials.yaml（ALIYUN_API_KEY）
+            import yaml as _yaml
+
+            _cred_path = Path.home() / ".dsh" / ".credentials.yaml"
+            _cred = _yaml.safe_load(_cred_path.read_text(encoding="utf-8"))
+            api_key = str(_cred.get("refs", {}).get("ALIYUN_API_KEY") or "")
+        except Exception:
+            api_key = ""
+    if not api_key:
+        print("[!] 需要 API key：DASH_API_KEY / LLM_API_KEY / 或 .credentials.yaml ALIYUN_API_KEY")
         return 1
 
     root = default_upstream_root()
