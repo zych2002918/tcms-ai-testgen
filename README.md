@@ -58,6 +58,9 @@ python examples/run_p3_comparison.py
 
 # 真实 LLM（需 pip install .[llm] 与 DEEPSEEK_API_KEY；同一 DSL 同一管线）
 python -m tcms_ai_testgen.cli --llm --target "TCMS 超速防护"
+
+# P5 多模型 × 多批正式对比（v4-flash / v3.2 / r1；key 走 DASH_API_KEY 或 .credentials.yaml）
+python examples/run_multi_model.py --batches 3 --num 8 --mutation --out docs/reports/multi_model_v1.json
 ```
 
 ## 模块地图
@@ -81,7 +84,7 @@ python -m tcms_ai_testgen.cli --llm --target "TCMS 超速防护"
 - `docs/metrics.md` — 指标口径权威定义（parse/compile/exec/kill_rate 分母诚实）
 - `docs/decisions.md` — 关键决策 + 对抗审查采纳记录
 - `docs/asset-loader.md` — 资产解析设计
-- `docs/experiments/p2-real-executor.md` / `p3-source-comparison.md` — 实验报告
+- `docs/experiments/p2-real-executor.md` / `p3-source-comparison.md` / `p5-multi-model.md` — 实验报告
 - `docs/reports/` — 可复现运行报告（JSON）
 
 ## 工程门禁（与上游同款水准）
@@ -98,9 +101,9 @@ LLM 非确定性：CI 只跑 mock 离线；真实执行实验固定 seed/温度�
 - [x] P3c 真 LLM prompt 契约（execution DSL 已入 system prompt + 资产事实注入）
 - [x] P3d 真 LLM 臂实测（deepseek-v3.2：compile 100%、幻觉被真实执行拦截，见 docs/experiments/p3-llm-real.md）
 - [x] P4 RAG（金标检索）+ 反思 harness（AI 自愈闭环，self-heal 0.40，见 docs/experiments/p4-agent.md）
-- [ ] 多模型 × 多批正式对比（v4-flash / v3.2 / r1；当前为单模型小样本）
+- [x] P5 多模型 × 多批正式对比（v4-flash / v3.2 / r1 × 3 批，见 docs/experiments/p5-multi-model.md）
+- [x] LLM-as-judge 与规则 rubric 交叉验证（agreement 1.0 / mean_abs_diff 3.6，见 docs/experiments/p4-agent.md §6）
 - [ ] 多轮反思（round3+）与 class2 证据增强
-- [ ] LLM-as-judge 与规则 rubric 交叉验证
 
 ## License
 
