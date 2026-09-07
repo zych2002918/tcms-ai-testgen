@@ -1,3 +1,10 @@
+﻿> ## 📦 仓库已合并 → tcms-ai-platform
+> 本仓库（tcms-ai-testgen）已整体并入
+> [**zych2002918/tcms-ai-platform**](https://github.com/zych2002918/tcms-ai-platform)，
+> 代码位于其 **`ai-testgen/`** 目录，独立包结构保留（`pip install -e "./ai-testgen[test]"`）。
+> 后续开发与 issue 请到新仓库。以下为原 README 存档。
+
+---
 # tcms-ai-testgen
 
 **让测试平台学会自己写测试，并用量化证据证明它写得好。**
@@ -108,3 +115,4 @@ LLM 非确定性：CI 只跑 mock 离线；真实执行实验固定 seed/温度�
 ## License
 
 MIT
+
