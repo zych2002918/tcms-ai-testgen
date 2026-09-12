@@ -40,7 +40,9 @@ jobs:
       - name: Install
         run: |
           pip install --upgrade pip
-          pip install -e ".[test]"
+          # 含 lint extra：ruff 在 lint 组里，只装 test 会让下一步 `ruff check` 报
+          # command not found（exit 127）
+          pip install -e ".[test,lint]"
           # 上游被测平台的运行依赖（真实执行时 subprocess 需要）
           pip install python-can cantools pyyaml pytest pytest-cov
       - name: Lint
