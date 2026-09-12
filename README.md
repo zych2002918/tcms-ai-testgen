@@ -7,6 +7,12 @@
 ---
 # tcms-ai-testgen
 
+[![Python](https://img.shields.io/badge/Python-3.10+-3776ab)](#)
+[![tests](https://img.shields.io/badge/tests-165%20passed-2dd4a0)](docs/metrics.md)
+[![coverage](https://img.shields.io/badge/coverage-91%25-2dd4a0)](docs/metrics.md)
+[![CI](https://github.com/zych2002918/tcms-ai-testgen/actions/workflows/ci.yml/badge.svg)](https://github.com/zych2002918/tcms-ai-testgen/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 **让测试平台学会自己写测试，并用量化证据证明它写得好。**
 
 > 从真实 TCMS（列车控制）CAN 资产（DBC + 故障场景）生成结构化测试用例，
